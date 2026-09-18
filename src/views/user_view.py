@@ -8,25 +8,19 @@ from controllers.user_controller import UserController
 
 class UserView:
     @staticmethod
-    def show_options():
-        """ Show menu with operation options which can be selected by the user """
+    def display_list():
+        """ Show the list of users """
         controller = UserController()
-        while True:
-            print("\n1. Montrer la liste d'utilisateurs\n2. Ajouter un utilisateur\n3. Quitter l'appli")
-            choice = input("Choisissez une option: ")
+        UserView.show_users(controller.list_users())
+        controller.shutdown()
 
-            if choice == '1':
-                users = controller.list_users()
-                UserView.show_users(users)
-            elif choice == '2':
-                name, email = UserView.get_inputs()
-                user = User(None, name, email)
-                controller.create_user(user)
-            elif choice == '3':
-                controller.shutdown()
-                break
-            else:
-                print("Cette option n'existe pas.")
+    @staticmethod
+    def add():
+        """ Fill the form and add a new user """
+        name, email = UserView.get_inputs()
+        controller = UserController()
+        controller.create_user(User(None, name, email))
+        controller.shutdown()
 
     @staticmethod
     def show_users(users):
