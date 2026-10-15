@@ -7,6 +7,23 @@ from controllers.product_controller import ProductController
 
 class ProductView:
     @staticmethod
+    def show_options():
+        """ Show menu with operation options which can be selected by the user """
+        while True:
+            print("\n1. Montrer la liste d'items\n2. Ajouter un item\n3. Supprimer un item\n4. Retour au menu principal")
+            choice = input("Choisissez une option: ")
+            if choice == '1':
+                ProductView.display_list()
+            elif choice == '2':
+                ProductView.add()
+            elif choice == '3':
+                ProductView.delete()
+            elif choice == '4':
+                break
+            else:
+                print("Cette option n'existe pas.")
+
+    @staticmethod
     def display_list():
         """ Show the list of products """
         controller = ProductController()

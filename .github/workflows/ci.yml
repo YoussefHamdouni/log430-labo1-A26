@@ -1,46 +1,87 @@
-name: CI
+name: CI/CD
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [ main ]
+  pull_request:
 
 jobs:
   test:
+    name: Tests (MySQL + MongoDB)
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout dépot
+      - name: Checkout dépôt
         uses: actions/checkout@v4
 
-      - name: Créer fichier .env (TODO - utilisez les secrets)
+      - name: Créer le fichier .env à partir des secrets
+        env:
+          DB_USERNAME: ${{ secrets.DB_USERNAME || 'labo01' }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD || 'labo01' }}
         run: |
-          echo "MYSQL_HOST=mysql" >> .env
-          echo "MONGODB_HOST=mongo" >> .env
-          echo "MYSQL_DB_NAME=labo01_db" >> .env
-          echo "DB_USERNAME=labo01" >> .env
-          echo "DB_PASSWORD=labo01" >> .env
+          {
+            echo "MYSQL_HOST=mysql"
+            echo "MONGODB_HOST=mongo"
+            echo "MYSQL_DB_NAME=labo01_db"
+            echo "DB_USERNAME=${DB_USERNAME}"
+            echo "DB_PASSWORD=${DB_PASSWORD}"
+          } > .env
 
-      - name: Démarrer le conteneur
+      - name: Démarrer les conteneurs
         run: |
           docker network create labo01-network
-          docker compose up -d
+          docker compose up -d --build
 
       - name: Attendre MySQL
         run: |
-          sleep 10
-          timeout=60
-          until docker exec mysql mysqladmin ping -h localhost -u root -proot --silent; do
-            echo "Waiting for MySQL..."
-            sleep 3
-            timeout=$((timeout - 3))
-            if [ $timeout -le 0 ]; then
-              echo "MySQL failed to start"
-              exit 1
+          for i in $(seq 1 30); do
+            if docker exec mysql mysql -ulabo01 -plabo01 -e "SELECT 1" labo01_db >/dev/null 2>&1; then
+              echo "MySQL prêt"; exit 0
             fi
+            echo "En attente de MySQL..."; sleep 3
           done
-          sleep 5
+          echo "MySQL n'a pas démarré"; exit 1
 
-      - name: Éxécuter les tests (TODO - ajouter test_products)
-        run: docker exec store_manager_cli pytest ./src/tests/test_user.py
+      - name: Exécuter les tests (User MySQL/MongoDB + Product)
+        run: docker exec store_manager_cli pytest -v ./src/tests
 
-      - name: Cleanup
+      - name: Logs en cas d'échec
+        if: failure()
+        run: docker compose logs
+
+      - name: Nettoyage
         if: always()
         run: docker compose down -v
+
+  publish:
+    name: Publier l'image sur GHCR
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout dépôt
+        uses: actions/checkout@v4
+
+      - name: Authentification à GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Déterminer le nom de l'image (minuscules)
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Construire et publier l'image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.image.outputs.name }}:latest
+            ${{ steps.image.outputs.name }}:${{ github.sha }}
